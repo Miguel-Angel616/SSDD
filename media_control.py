@@ -26,6 +26,12 @@ def get_proxy(ic, property, cls):
     return object
 
 
+def show_status(render, operation):
+    status = render.get_status()
+    title = status.current_track.title if status.current_track else None
+    print(f"{operation:>12}: {status.state}, {title}, repeat={status.is_repeating}")
+
+
 def main(ic):
     provider = get_proxy(ic, 'Spotifice.MediaProvider.Proxy', Spotifice.MediaProviderPrx)
     render = get_proxy(ic, 'Spotifice.MediaRender.Proxy', Spotifice.MediaRenderPrx)
@@ -42,19 +48,39 @@ def main(ic):
     print(f"Requesting info for track {tracks[0].id}")
     print(f"Track title: {tracks[0].title}")
 
+    if len(tracks) < 3:
+        print("Hacen falta al menos 3 pistas para la demo.")
+        return
+
+    # Las pistas de prueba duran 1, 2 y 4 s: usamos las más largas para que
+    # no terminen a mitad de la demo.
+    track1, track2 = tracks[2], tracks[1]
+
     render.bind_media_provider(provider)
     render.stop()
+    show_status(render, "start")
 
-    print("Loading track into MediaRender...")
-    render.load_track(tracks[0].id)
+    render.load_track(track1.id)
     render.play()
-    sleep(5)  # Let it play for 5 seconds
+    show_status(render, "play")
+
+    render.load_track(track2.id)
+    show_status(render, "load_track")
+
+    render.pause()
+    show_status(render, "pause")
+
+    render.previous()
+    show_status(render, "previous")
+
+    render.play()
+    show_status(render, "play")
+
+    render.set_repeat(enabled=True)
+    show_status(render, "set_repeat")
 
     render.stop()
-    render.load_track(tracks[1].id)
-    render.play()
-
-    # track 1 continues playing...
+    show_status(render, "stop")
 
 
 if __name__ == '__main__':
