@@ -1,6 +1,6 @@
 .PHONY: check-slice test clean
 
-check-slice:  check-spotifice_v0.ice
+check-slice:  check-spotifice_v2.ice
 
 check-%.ice: %.ice
 	slice2html -I /usr/share/ice/slice $< --output-dir /tmp
