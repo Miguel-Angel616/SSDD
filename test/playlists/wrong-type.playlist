@@ -1,0 +1,8 @@
+{
+  "id": "wrong-type",
+  "name": "Wrong-type",
+  "description": "",
+  "owner": "tests",
+  "created_at": "25-05-2011",
+  "track_ids": "not a list"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "chain",
+  "name": "Chain",
+  "description": "",
+  "owner": "tests",
+  "created_at": "25-05-2011",
+  "track_ids": [
+    "453a4eb54b0a4250",
+    "55d35f150a852cd6"
+  ]
+}

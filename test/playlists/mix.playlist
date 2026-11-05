@@ -1,0 +1,12 @@
+{
+  "id": "mix",
+  "name": "Mix",
+  "description": "Three tracks",
+  "owner": "tests",
+  "created_at": "25-05-2011",
+  "track_ids": [
+    "64bf043f26bb74e0",
+    "55d35f150a852cd6",
+    "453a4eb54b0a4250"
+  ]
+}

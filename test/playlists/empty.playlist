@@ -1,0 +1,8 @@
+{
+  "id": "empty",
+  "name": "Empty",
+  "description": "",
+  "owner": "tests",
+  "created_at": "25-05-2011",
+  "track_ids": []
+}

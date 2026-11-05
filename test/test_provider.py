@@ -7,16 +7,19 @@ from metadata import identify
 from .icetest import IceTestCase
 
 MEDIA = Path('test/media')
+PLAYLISTS = Path('test/playlists')
 
 
 class TestProvider(IceTestCase):
     provider_port = 10000
     provider_identity = 'mediaProvider0'
+    playlists_dir = PLAYLISTS
 
     def setUp(self):
         provider_props = {
             'Spotifice.MediaProviderAdapter.Endpoints': f'tcp -p {self.provider_port}',
             'Spotifice.MediaProvider.Content': str(MEDIA),
+            'Spotifice.MediaProvider.Playlists': str(self.playlists_dir),
             'Spotifice.MediaProvider.Identity': self.provider_identity
         }
         provider_strprx = f'{self.provider_identity}:tcp -p {self.provider_port} -t 500'
@@ -91,3 +94,63 @@ class StreamManagerNoAuthBase(TestProvider):
 
         self.assertEqual(cm.exception.item, '')
         self.assertEqual(cm.exception.reason, 'Invalid render identity')
+
+
+TRACK_1S = identify(MEDIA / '1s.mp3')
+TRACK_2S = identify(MEDIA / '2s.mp3')
+TRACK_4S = identify(MEDIA / '4s.mp3')
+
+
+class PlaylistManagerTestsBase(TestProvider):
+    def test_provider_is_a_playlist_manager(self):
+        self.assertTrue(self.sut.ice_isA('::Spotifice::PlaylistManager'))
+
+    def test_get_all_playlists(self):
+        playlists = self.sut.get_all_playlists()
+
+        self.assertEqual(
+            [each.id for each in playlists], ['chain', 'empty', 'mix', 'partial'])
+
+    def test_get_playlist(self):
+        playlist = self.sut.get_playlist('mix')
+
+        self.assertEqual(playlist.id, 'mix')
+        self.assertEqual(playlist.name, 'Mix')
+        self.assertEqual(playlist.description, 'Three tracks')
+        self.assertEqual(playlist.owner, 'tests')
+        self.assertEqual(list(playlist.track_ids), [TRACK_4S, TRACK_2S, TRACK_1S])
+
+    def test_created_at_is_in_seconds_since_epoch(self):
+        # 25-05-2011 (UTC)
+        self.assertEqual(self.sut.get_playlist('mix').created_at, 1306281600)
+
+    def test_unknown_tracks_are_discarded(self):
+        playlist = self.sut.get_playlist('partial')
+
+        self.assertEqual(list(playlist.track_ids), [TRACK_4S, TRACK_2S])
+
+    def test_empty_playlist(self):
+        self.assertEqual(list(self.sut.get_playlist('empty').track_ids), [])
+
+    def test_unreadable_files_are_ignored(self):
+        ids = [each.id for each in self.sut.get_all_playlists()]
+
+        for bad in ['broken', 'bad-date', 'missing-field', 'wrong-type', 'not-a-playlist']:
+            self.assertNotIn(bad, ids)
+
+    def test_get_playlist_wrong_playlist(self):
+        with self.assertRaises(Spotifice.PlaylistError) as cm:
+            self.sut.get_playlist('bad-playlist')
+
+        self.assertEqual(cm.exception.item, 'bad-playlist')
+        self.assertEqual(cm.exception.reason, 'Playlist not found')
+
+
+class NoPlaylistsDirectoryTestsBase(TestProvider):
+    playlists_dir = Path('test/this-directory-does-not-exist')
+
+    def test_there_are_no_playlists(self):
+        self.assertEqual(len(self.sut.get_all_playlists()), 0)
+
+    def test_tracks_are_still_available(self):
+        self.assertEqual(len(self.sut.get_all_tracks()), 4)
