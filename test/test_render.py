@@ -10,6 +10,7 @@ from gst_player import GstPlayer
 from .icetest import IceTestCase
 
 MEDIA = Path('test/media')
+PLAYLISTS = Path('test/playlists')
 
 
 class TestRender(IceTestCase):
@@ -22,6 +23,7 @@ class TestRender(IceTestCase):
         provider_props = {
             'Spotifice.MediaProviderAdapter.Endpoints': f'tcp -p {self.provider_port}',
             'Spotifice.MediaProvider.Content': str(MEDIA),
+            'Spotifice.MediaProvider.Playlists': str(PLAYLISTS),
             'Spotifice.MediaProvider.Identity': self.provider_identity
         }
         provider_strprx = f'{self.provider_identity}:tcp -p {self.provider_port} -t 500'
@@ -194,3 +196,55 @@ class LoadTrackTestsBase(RenderTestCase):
 
         self.bind()
         self.assertFalse(self.is_playing())
+
+
+class PlaylistTestCase(RenderTestCase):
+    def load_mix(self):
+        self.bind()
+        self.sut.load_playlist('mix')
+
+
+class LoadPlaylistTestsBase(PlaylistTestCase):
+    def test_load_playlist_loads_the_first_track(self):
+        self.load_mix()
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_load_playlist_does_not_start_playback(self):
+        self.load_mix()
+        self.assertFalse(self.is_playing())
+
+    def test_load_playlist_while_playing_plays_the_first_track(self):
+        self.bind()
+        self.sut.load_track(SHORT)
+        self.sut.play()
+
+        self.sut.load_playlist('mix')
+
+        self.assertEqual(self.current_id(), LONG)
+        self.assertTrue(self.is_playing())
+
+    def test_load_playlist_unbound_provider(self):
+        with self.assertRaises(Spotifice.BadReference) as cm:
+            self.sut.load_playlist('mix')
+
+        self.assertEqual(cm.exception.reason, "No MediaProvider bound")
+
+    def test_load_unknown_playlist(self):
+        self.bind()
+        self.sut.load_track(SHORT)
+
+        with self.assertRaises(Spotifice.PlaylistError) as cm:
+            self.sut.load_playlist('bad-playlist')
+
+        self.assertEqual(cm.exception.item, 'bad-playlist')
+        self.assertEqual(cm.exception.reason, "Playlist not found")
+        self.assertEqual(self.current_id(), SHORT)
+
+    def test_load_empty_playlist(self):
+        self.bind()
+        self.sut.load_track(SHORT)
+
+        with self.assertRaises(Spotifice.PlaylistError):
+            self.sut.load_playlist('empty')
+
+        self.assertEqual(self.current_id(), SHORT)

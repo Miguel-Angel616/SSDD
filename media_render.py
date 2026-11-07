@@ -150,6 +150,23 @@ class MediaRenderI(Spotifice.MediaRender):
     def get_current_track(self, current=None):
         return self.current_track
 
+
+    def load_playlist(self, playlist_id, current=None):
+        with self.lock:
+            self.remember_identity(current)
+            self.ensure_provider_bound()
+
+            playlist = self.provider.get_playlist(playlist_id)
+            if not playlist.track_ids:
+                raise Spotifice.PlaylistError(playlist_id, "Playlist is empty")
+
+            track = self.provider.get_track_info(playlist.track_ids[0])
+            self.switch_to(track)
+            self.playlist = playlist
+            self.playlist_index = 0
+
+            logger.info(f"Playlist '{playlist.name}' loaded")
+
     # --- PlaybackController ---
 
     def play(self, current=None):
