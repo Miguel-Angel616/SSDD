@@ -59,7 +59,10 @@ class MediaRenderI(Spotifice.MediaRender):
             raise Spotifice.StreamError(reason="Strean setup failed")
 
         self.generation += 1
-        self.player.play(self.chunk_reader(self.render_id))
+        generation = self.generation
+        self.player.play(
+            self.chunk_reader(self.render_id),
+            lambda: self.on_track_exhausted(generation))
 
         if not self.player.confirm_play_starts():
             self.release_stream_quietly()
@@ -112,6 +115,31 @@ class MediaRenderI(Spotifice.MediaRender):
         track_id = self.playlist.track_ids[index]
         self.switch_to(self.provider.get_track_info(track_id))
         self.playlist_index = index
+
+    def on_track_exhausted(self, generation):
+        with self.lock:
+            if generation != self.generation or not self.playing:
+                return
+
+            # El player ya ha desmontado el pipeline.
+            self.playing = False
+            logger.info("Track finished")
+
+            if not self.playlist:
+                return
+
+            index = self.position_after(self.playlist_index)
+            if index is None:
+                return
+
+            try:
+                track = self.provider.get_track_info(self.playlist.track_ids[index])
+                self.start_stream(track)
+                self.current_track = track
+                self.playlist_index = index
+                logger.info(f"Next track of the playlist: {track.title}")
+            except (Spotifice.Error, Ice.Exception) as e:
+                logger.error(f"Could not continue with the playlist: {e}")
 
     # --- RenderConnectivity ---
 

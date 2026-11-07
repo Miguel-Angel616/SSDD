@@ -1,4 +1,5 @@
 from pathlib import Path
+from time import monotonic, sleep
 
 from media_provider import main as provider_main
 from media_render import Spotifice
@@ -411,3 +412,55 @@ class WithoutPlaylistTestsBase(PlaylistTestCase):
         self.sut.set_repeat(enabled=True)
         self.sut.next()
         self.assertEqual((self.current_id(), self.is_playing()), (MEDIUM, True))
+
+
+class EndOfTrackTestsBase(PlaylistTestCase):
+    def wait_for_track(self, track_id, timeout_secs=6):
+        deadline = monotonic() + timeout_secs
+        while monotonic() < deadline:
+            if self.current_id() == track_id:
+                return True
+            sleep(0.1)
+        return False
+
+    def load_chain(self):
+        self.bind()
+        self.sut.load_playlist('chain')
+
+    def test_when_a_track_ends_the_next_one_is_played(self):
+        self.load_chain()
+        self.sut.play()
+
+        self.assertTrue(self.wait_for_track(MEDIUM))
+        self.assertTrue(self.is_playing())
+
+    def test_when_the_last_track_ends_playback_stops(self):
+        self.load_chain()
+        self.sut.play()
+        self.assertTrue(self.wait_for_track(MEDIUM))
+
+        sleep(3)
+
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.assertFalse(self.is_playing())
+
+    def test_when_the_last_track_ends_with_repeat_the_first_is_played(self):
+        self.load_chain()
+        self.sut.set_repeat(True)
+        self.sut.play()
+        self.assertTrue(self.wait_for_track(MEDIUM))
+
+        self.assertTrue(self.wait_for_track(SHORT))
+
+        self.assertTrue(self.is_playing())
+
+    def test_a_single_track_stops_when_it_ends(self):
+        self.bind()
+        self.sut.load_track(SHORT)
+        self.sut.set_repeat(True)
+        self.sut.play()
+
+        sleep(2.5)
+
+        self.assertEqual(self.current_id(), SHORT)
+        self.assertFalse(self.is_playing())
