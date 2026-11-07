@@ -127,3 +127,70 @@ class PlayStopTestsBase(TestRender):
         self.sut.stop()
 
         self.assertEqual(self.sut.get_current_track().id, LONG)
+
+
+MEDIUM = identify(MEDIA / '2s.mp3')
+SHORT = identify(MEDIA / '1s.mp3')
+
+
+class RenderTestCase(TestRender):
+    def current_id(self):
+        track = self.sut.get_current_track()
+        return track.id if track else None
+
+    def is_playing(self):
+        """play() solo falla con 'Already playing' si ya estaba sonando."""
+        try:
+            self.sut.play()
+        except Spotifice.PlayerError as e:
+            self.assertEqual(e.reason, "Already playing")
+            return True
+
+        self.sut.stop()
+        return False
+
+
+class LoadTrackTestsBase(RenderTestCase):
+    def setUp(self):
+        super().setUp()
+        self.bind()
+        self.sut.load_track(LONG)
+
+    def test_load_track_when_stopped(self):
+        self.sut.load_track(MEDIUM)
+
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.assertFalse(self.is_playing())
+
+    def test_load_track_when_playing_keeps_playing(self):
+        self.sut.play()
+
+        self.sut.load_track(MEDIUM)
+
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.assertTrue(self.is_playing())
+
+    def test_wrong_track_changes_nothing(self):
+        self.sut.play()
+
+        with self.assertRaises(Spotifice.TrackError):
+            self.sut.load_track('bad-track-id')
+
+        self.assertEqual(self.current_id(), LONG)
+        self.assertTrue(self.is_playing())
+
+    def test_reloading_the_current_track_when_playing_keeps_playing(self):
+        self.sut.play()
+
+        self.sut.load_track(LONG)
+
+        self.assertEqual(self.current_id(), LONG)
+        self.assertTrue(self.is_playing())
+
+    def test_unbind_stops_playback(self):
+        self.sut.play()
+
+        self.sut.unbind_media_provider()
+
+        self.bind()
+        self.assertFalse(self.is_playing())

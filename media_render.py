@@ -5,7 +5,6 @@ import signal
 import sys
 import threading
 import uuid
-from contextlib import contextmanager
 from time import sleep
 
 import Ice
@@ -89,6 +88,19 @@ class MediaRenderI(Spotifice.MediaRender):
             except Ice.Exception as e:
                 logger.error(f"Could not close the stream: {e}")
 
+    def switch_to(self, track):
+        """Pone `track` como pista actual conservando el estado: si estaba
+        sonando, suena la nueva desde el principio; si no, espera a play()."""
+        if self.playing:
+            self.halt_stream()
+            try:
+                self.start_stream(track)
+            except Exception:
+                self.playing = False
+                raise
+
+        self.current_track = track
+
     # --- RenderConnectivity ---
 
     def bind_media_provider(self, media_provider, current=None):
@@ -98,48 +110,47 @@ class MediaRenderI(Spotifice.MediaRender):
         except Ice.ConnectionRefusedException as e:
             raise Spotifice.BadReference(reason=f"MediaProvider not reachable: {e}")
 
-        self.provider = media_provider
+        with self.lock:
+            self.remember_identity(current)
+            self.provider = media_provider
+            self.playlist = None
+
         logger.info(f"Bound to MediaProvider '{id2str(media_provider.ice_getIdentity())}'")
 
     def unbind_media_provider(self, current=None):
-        try:
-            self.stop(current)
-        except Spotifice.PlayerError as e:
-            logger.error(f"Unbinding despite stop failure: {e.reason}")
+        with self.lock:
+            try:
+                self.stop(current)
+            except Spotifice.PlayerError as e:
+                logger.error(f"Unbinding despite stop failure: {e.reason}")
 
-        self.provider = None
+            self.provider = None
+            self.playlist = None
+
         logger.info("Unbound MediaProvider")
 
     # --- ContentManager ---
 
     def load_track(self, track_id, current=None):
-        self.ensure_provider_bound()
+        with self.lock:
+            self.remember_identity(current)
+            self.ensure_provider_bound()
 
-        try:
-            with self.keep_playing_state(current):
-                self.current_track = self.provider.get_track_info(track_id)
+            try:
+                track = self.provider.get_track_info(track_id)
+            except Spotifice.TrackError as e:
+                logger.error(f"Error setting track: {e.reason}")
+                raise
 
-            logger.info(f"Current track set to: {self.current_track.title}")
+            self.switch_to(track)
+            self.playlist = None
 
-        except Spotifice.TrackError as e:
-            logger.error(f"Error setting track: {e.reason}")
-            raise
+            logger.info(f"Current track set to: {track.title}")
 
     def get_current_track(self, current=None):
         return self.current_track
 
     # --- PlaybackController ---
-
-    @contextmanager
-    def keep_playing_state(self, current):
-        playing = self.player.is_playing()
-        if playing:
-            self.stop(current)
-        try:
-            yield
-        finally:
-            if playing:
-                self.play(current)
 
     def play(self, current=None):
         assert current, "remote invocation required"
