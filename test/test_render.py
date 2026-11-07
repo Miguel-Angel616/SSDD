@@ -248,3 +248,166 @@ class LoadPlaylistTestsBase(PlaylistTestCase):
             self.sut.load_playlist('empty')
 
         self.assertEqual(self.current_id(), SHORT)
+
+
+class NavigationTestsBase(PlaylistTestCase):
+    # next()
+    def test_next(self):
+        self.load_mix()
+        self.sut.next()
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.sut.next()
+        self.assertEqual(self.current_id(), SHORT)
+
+    def test_next_when_stopped_keeps_stopped(self):
+        self.load_mix()
+        self.sut.next()
+        self.assertFalse(self.is_playing())
+
+    def test_next_when_playing_keeps_playing(self):
+        self.load_mix()
+        self.sut.play()
+
+        self.sut.next()
+
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.assertTrue(self.is_playing())
+
+    def test_next_on_the_last_track_does_nothing(self):
+        self.load_mix()
+        self.sut.next()
+        self.sut.next()
+
+        self.sut.next()
+
+        self.assertEqual(self.current_id(), SHORT)
+
+    def test_next_on_the_last_track_with_repeat_loads_the_first(self):
+        self.load_mix()
+        self.sut.set_repeat(True)
+        self.sut.next()
+        self.sut.next()
+
+        self.sut.next()
+
+        self.assertEqual(self.current_id(), LONG)
+
+    # previous()
+    def test_previous(self):
+        self.load_mix()
+        self.sut.next()
+        self.sut.next()
+
+        self.sut.previous()
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.sut.previous()
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_previous_on_the_first_track_does_nothing(self):
+        self.load_mix()
+        self.sut.previous()
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_previous_on_the_first_track_does_nothing_even_with_repeat(self):
+        self.load_mix()
+        self.sut.set_repeat(True)
+        self.sut.previous()
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_previous_when_playing_keeps_playing(self):
+        self.load_mix()
+        self.sut.next()
+        self.sut.play()
+
+        self.sut.previous()
+
+        self.assertEqual(self.current_id(), LONG)
+        self.assertTrue(self.is_playing())
+
+    def test_previous_when_stopped_keeps_stopped(self):
+        self.load_mix()
+        self.sut.next()
+        self.sut.previous()
+        self.assertFalse(self.is_playing())
+
+    def test_playlist_loaded_after_discarding_unknown_tracks(self):
+        self.bind()
+        self.sut.load_playlist('partial')
+        self.sut.next()
+        self.assertEqual(self.current_id(), MEDIUM)
+
+
+class WithoutPlaylistTestsBase(PlaylistTestCase):
+    def test_next_and_previous_without_playlist_do_nothing(self):
+        self.bind()
+        self.sut.load_track(MEDIUM)
+
+        self.sut.next()
+        self.assertEqual(self.current_id(), MEDIUM)
+        self.sut.previous()
+        self.assertEqual(self.current_id(), MEDIUM)
+
+    def test_next_and_previous_without_anything_loaded(self):
+        self.sut.next()
+        self.sut.previous()
+        self.assertIsNone(self.sut.get_current_track())
+
+    def test_set_repeat_without_playlist_only_stores_the_value(self):
+        self.bind()
+        self.sut.load_track(MEDIUM)
+
+        self.sut.set_repeat(True)
+
+        self.assertEqual(self.current_id(), MEDIUM)
+
+    def test_load_track_discards_the_playlist(self):
+        self.load_mix()
+        self.sut.load_track(MEDIUM)
+
+        self.sut.next()
+        self.assertEqual(self.current_id(), MEDIUM)
+
+    def test_bind_discards_the_playlist(self):
+        self.load_mix()
+        self.bind()
+
+        self.sut.next()
+
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_unbind_discards_the_playlist_and_stops(self):
+        self.load_mix()
+        self.sut.play()
+
+        self.sut.unbind_media_provider()
+
+        self.assertEqual(self.current_id(), LONG)
+        self.bind()
+        self.assertFalse(self.is_playing())
+        self.sut.next()
+        self.assertEqual(self.current_id(), LONG)
+
+    def test_failed_load_playlist_keeps_the_previous_playlist(self):
+        self.load_mix()
+
+        with self.assertRaises(Spotifice.PlaylistError):
+            self.sut.load_playlist('bad-playlist')
+
+        self.sut.next()
+        self.assertEqual(self.current_id(), MEDIUM)
+
+    def test_example_sequence(self):
+        self.bind()
+        self.sut.load_playlist('mix')
+        self.assertEqual((self.current_id(), self.is_playing()), (LONG, False))
+        self.sut.play()
+        self.assertEqual((self.current_id(), self.is_playing()), (LONG, True))
+        self.sut.next()
+        self.assertEqual((self.current_id(), self.is_playing()), (MEDIUM, True))
+        self.sut.stop()
+        self.sut.previous()
+        self.assertEqual((self.current_id(), self.is_playing()), (LONG, False))
+        self.sut.play()
+        self.sut.set_repeat(enabled=True)
+        self.sut.next()
+        self.assertEqual((self.current_id(), self.is_playing()), (MEDIUM, True))

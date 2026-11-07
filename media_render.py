@@ -101,6 +101,18 @@ class MediaRenderI(Spotifice.MediaRender):
 
         self.current_track = track
 
+    def position_after(self, index):
+        """Posicion de la pista que sigue a la de `index`, o None si no hay
+        siguiente (ultima pista y sin repeticion)."""
+        if index + 1 < len(self.playlist.track_ids):
+            return index + 1
+        return 0 if self.repeat else None
+
+    def load_playlist_track(self, index):
+        track_id = self.playlist.track_ids[index]
+        self.switch_to(self.provider.get_track_info(track_id))
+        self.playlist_index = index
+
     # --- RenderConnectivity ---
 
     def bind_media_provider(self, media_provider, current=None):
@@ -203,6 +215,34 @@ class MediaRenderI(Spotifice.MediaRender):
             self.halt_stream()
 
         logger.info("Stopped")
+
+    def next(self, current=None):
+        with self.lock:
+            self.remember_identity(current)
+
+            if not self.playlist:
+                return
+
+            index = self.position_after(self.playlist_index)
+            if index is not None:
+                self.ensure_provider_bound()
+                self.load_playlist_track(index)
+
+    def previous(self, current=None):
+        with self.lock:
+            self.remember_identity(current)
+
+            if not self.playlist or self.playlist_index == 0:
+                return
+
+            self.ensure_provider_bound()
+            self.load_playlist_track(self.playlist_index - 1)
+
+    def set_repeat(self, enabled, current=None):
+        with self.lock:
+            self.repeat = enabled
+
+        logger.info(f"Repeat {'enabled' if enabled else 'disabled'}")
 
 
 
