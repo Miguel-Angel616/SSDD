@@ -93,3 +93,37 @@ class PlaybackTestsBase(TestRender):
         self.sut.load_track(identify(MEDIA / '2s.mp3'))
 
         self.assertEqual(self.sut.get_current_track().id, identify(MEDIA / '2s.mp3'))
+
+
+LONG = identify(MEDIA / '4s.mp3')
+
+
+class PlayStopTestsBase(TestRender):
+    def setUp(self):
+        super().setUp()
+        self.bind()
+        self.sut.load_track(LONG)
+
+    def test_play_when_playing_fails_with_the_expected_reason(self):
+        self.sut.play()
+
+        with self.assertRaises(Spotifice.PlayerError) as cm:
+            self.sut.play()
+
+        self.assertEqual(cm.exception.reason, "Already playing")
+
+    def test_play_after_stop_plays_again(self):
+        self.sut.play()
+        self.sut.stop()
+        self.sut.play()
+
+        with self.assertRaises(Spotifice.PlayerError) as cm:
+            self.sut.play()
+
+        self.assertEqual(cm.exception.reason, "Already playing")
+
+    def test_stop_keeps_the_current_track(self):
+        self.sut.play()
+        self.sut.stop()
+
+        self.assertEqual(self.sut.get_current_track().id, LONG)

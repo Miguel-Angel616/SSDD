@@ -26,13 +26,68 @@ class MediaRenderI(Spotifice.MediaRender):
         self.provider = None
         self.current_track = None
 
-    def ensure_player_stopped(self):
-        if self.player.is_playing():
-            raise Spotifice.PlayerError(reason="Already playing")
+        self.render_id = None
+
+        self.playing = False
+        self.repeat = False
+
+        # Playlist cargada (None si no hay) y posicion de la pista actual en ella.
+        self.playlist = None
+        self.playlist_index = 0
+
+        # Identifica el flujo en curso, para ignorar avisos atrasados de flujos anteriores.
+        self.generation = 0
+
+        # Los hilos de Ice y el hilo del player modifican este estado a la vez.
+        self.lock = threading.RLock()
+
 
     def ensure_provider_bound(self):
         if not self.provider:
             raise Spotifice.BadReference(reason="No MediaProvider bound")
+
+    def remember_identity(self, current):
+        if current:
+            self.render_id = current.id
+
+    # --- Manejo del flujo (hay que tener el lock tomado) ---
+
+    def start_stream(self, track):
+        try:
+            self.provider.open_stream(self.render_id, track.id)
+        except Spotifice.BadIdentity as e:
+            logger.error(f"Error starting stream: {e.reason}")
+            raise Spotifice.StreamError(reason="Strean setup failed")
+
+        self.generation += 1
+        self.player.play(self.chunk_reader(self.render_id))
+
+        if not self.player.confirm_play_starts():
+            self.release_stream_quietly()
+            raise Spotifice.PlayerError(reason="Failed to confirm playback")
+
+        self.playing = True
+
+    def halt_stream(self):
+        self.generation += 1
+        self.playing = False
+        stopped = self.player.stop()
+        self.close_provider_stream()
+        if not stopped:
+            raise Spotifice.PlayerError(reason="Failed to confirm stop")
+
+    def release_stream_quietly(self):
+        try:
+            self.halt_stream()
+        except Spotifice.PlayerError as e:
+            logger.error(f"Could not release the stream: {e.reason}")
+
+    def close_provider_stream(self):
+        if self.provider and self.render_id:
+            try:
+                self.provider.close_stream(self.render_id)
+            except Ice.Exception as e:
+                logger.error(f"Could not close the stream: {e}")
 
     # --- RenderConnectivity ---
 
@@ -89,22 +144,17 @@ class MediaRenderI(Spotifice.MediaRender):
     def play(self, current=None):
         assert current, "remote invocation required"
 
-        self.ensure_provider_bound()
+        with self.lock:
+            self.remember_identity(current)
+            self.ensure_provider_bound()
 
-        if not self.current_track:
-            raise Spotifice.TrackError(reason="No track loaded")
+            if not self.current_track:
+                raise Spotifice.TrackError(reason="No track loaded")
 
-        self.ensure_player_stopped()
+            if self.playing:
+                raise Spotifice.PlayerError(reason="Already playing")
 
-        try:
-            self.provider.open_stream(current.id, self.current_track.id)
-        except Spotifice.BadIdentity as e:
-            logger.error(f"Error starting stream: {e.reason}")
-            raise Spotifice.StreamError(reason="Strean setup failed")
-
-        self.player.play(self.chunk_reader(current.id))
-        if not self.player.confirm_play_starts():
-            raise Spotifice.PlayerError(reason="Failed to confirm playback")
+            self.start_stream(self.current_track)
 
     def chunk_reader(self, render_id):
         provider = self.provider
@@ -120,13 +170,12 @@ class MediaRenderI(Spotifice.MediaRender):
         return read_chunk
 
     def stop(self, current=None):
-        if self.provider and current:
-            self.provider.close_stream(current.id)
-
-        if not self.player.stop():
-            raise Spotifice.PlayerError(reason="Failed to confirm stop")
+        with self.lock:
+            self.remember_identity(current)
+            self.halt_stream()
 
         logger.info("Stopped")
+
 
 
 def shutdown_on_interrupt(ic):
