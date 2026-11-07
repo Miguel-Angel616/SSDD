@@ -25,6 +25,10 @@ def get_proxy(ic, property, cls):
 
     return object
 
+def show_current(render, operation):
+    track = render.get_current_track()
+    print(f"{operation:>14}: {track.title if track else None}")
+
 
 def main(ic):
     provider = get_proxy(ic, 'Spotifice.MediaProvider.Proxy', Spotifice.MediaProviderPrx)
@@ -42,19 +46,44 @@ def main(ic):
     print(f"Requesting info for track {tracks[0].id}")
     print(f"Track title: {tracks[0].title}")
 
+    print("Fetching all playlists...")
+    playlists = provider.get_all_playlists()
+    for p in playlists:
+        print(f"- {p.name} ({p.id}): {len(p.track_ids)} tracks")
+
+    # La demo usa la playlist con mas pistas
+    playlist = max(playlists, key=lambda p: len(p.track_ids), default=None)
+    if not playlist or len(playlist.track_ids) < 2:
+        print("Hace falta una playlist con al menos 2 pistas para la demo.")
+        return
+
     render.bind_media_provider(provider)
     render.stop()
 
-    print("Loading track into MediaRender...")
-    render.load_track(tracks[0].id)
+    render.load_playlist(playlist.id)
+    show_current(render, "load_playlist")
+
     render.play()
-    sleep(5)  # Let it play for 5 seconds
+    show_current(render, "play")
+    sleep(3)  # Let it play for 3 seconds
+
+    render.next()
+    show_current(render, "next")
 
     render.stop()
-    render.load_track(tracks[1].id)
-    render.play()
+    show_current(render, "stop")
 
-    # track 1 continues playing...
+    render.previous()
+    show_current(render, "previous")
+
+    render.play()
+    show_current(render, "play")
+
+    render.set_repeat(enabled=True)
+    show_current(render, "set_repeat")
+
+    render.next()
+    show_current(render, "next")
 
 
 if __name__ == '__main__':
